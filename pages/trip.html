@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TravelCrew Trip</title>
+  <meta name="description" content="View this trip on TravelCrew.">
+  <meta property="og:title" content="TravelCrew Trip">
+  <meta property="og:description" content="View trip details on TravelCrew.">
+  <meta property="og:image" content="">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="/images/Icon-512.png">
+  <link rel="stylesheet" href="/src/trip-share/styles.css">
+</head>
+
+<body>
+  <div id="app" class="share-app">
+    <div id="loading-state" class="loading-state">
+      <div class="spinner" aria-hidden="true"></div>
+      <p>Loading trip...</p>
+    </div>
+
+    <div id="error-state" class="error-state hidden">
+      <div class="error-panel">
+        <img src="/images/Icon-512.png" alt="Travel Crew" class="error-logo">
+        <h1>Trip not found</h1>
+        <p>This trip may no longer be shared, or the link may be invalid.</p>
+        <div class="store-buttons">
+          <a id="error-appstore" data-app-store class="store-btn">App Store</a>
+          <a id="error-playstore" data-play-store hidden class="store-btn">Google Play</a>
+        </div>
+        <p><a href="/">Back to Travel Crew</a></p>
+      </div>
+    </div>
+
+    <main id="trip-content" class="hidden">
+      <div id="trip-hero" class="trip-hero"></div>
+      <section id="trip-header" class="section trip-header-section"></section>
+      <section id="members-section" class="section hidden"></section>
+      <section id="flights-section" class="section hidden"></section>
+      <section id="lodging-section" class="section hidden"></section>
+      <section id="activities-section" class="section hidden"></section>
+      <div class="cta-spacer" aria-hidden="true"></div>
+    </main>
+
+    <div id="cta-banner" class="cta-banner hidden">
+      <a id="open-in-app-btn" class="cta-btn">Open in Travel Crew</a>
+      <div class="cta-store-row">
+        <a id="appstore-btn" data-app-store class="store-btn">App Store</a>
+        <a id="playstore-btn" data-play-store hidden class="store-btn">Google Play</a>
+      </div>
+    </div>
+  </div>
+  <noscript><p>Enable JavaScript to view this shared trip. <a href="/">Visit Travel Crew</a>.</p></noscript>
+
+  <script src="/runtime-config.js"></script>
+  <script type="module" src="/src/trip-share/main.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,25 @@
+# This folder is the entire Cloud Build context, even when invoked from the
+# platform root. Do not inherit .gitignore: it excludes required public assets.
+.gcloudignore
+.git
+.git/**
+.gitignore
+.DS_Store
+.idea
+.claude
+.env
+.env.*
+!.env.example
+node_modules
+node_modules/**
+dist
+dist/**
+resources
+resources/**
+test
+test/**
+deploy
+deploy/**
+*.log
+*.pem
+*.key

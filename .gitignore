@@ -1,5 +1,22 @@
-# Folders
-images/
-firebase_initialize.js
-web.js
-firebase_services.js
+# OS/editor files
+.DS_Store
+.idea/
+.claude/
+
+# Local environment
+.env
+.env.local
+.env.*.local
+
+# Static assets (not committed)
+public/images/
+
+# Build output
+dist/
+
+# Dependencies
+node_modules/
+resources/
+cloudbuild.yaml
+.env.example
+deploy/

@@ -1,0 +1,466 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+:root {
+  --share-bg: #f7f8fb;
+  --share-surface: #ffffff;
+  --share-surface-strong: #edf1f6;
+  --share-text: #14213d;
+  --share-muted: #65728a;
+  --share-line: #dce3ec;
+  --share-accent: #1d7fc2;
+  --share-accent-dark: #166398;
+  --share-green-bg: #e7f7ef;
+  --share-green-text: #147445;
+  --share-red-bg: #fdebec;
+  --share-red-text: #b32631;
+  --share-radius: 8px;
+}
+
+html {
+  min-height: 100%;
+  background: var(--share-bg);
+  color: var(--share-text);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body {
+  min-height: 100dvh;
+  margin: 0;
+  background: var(--share-bg);
+}
+
+button,
+a {
+  font: inherit;
+}
+
+.hidden, [hidden] {
+  display: none !important;
+}
+
+.share-app {
+  min-height: 100dvh;
+}
+
+.loading-state,
+.error-state {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  padding: 24px;
+}
+
+.loading-state {
+  align-content: center;
+  gap: 14px;
+  color: var(--share-muted);
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--share-line);
+  border-top-color: var(--share-accent);
+  border-radius: 50%;
+  animation: spin 800ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.error-panel {
+  width: min(100%, 420px);
+  padding: 28px;
+  border: 1px solid var(--share-line);
+  border-radius: var(--share-radius);
+  background: var(--share-surface);
+  text-align: center;
+  box-shadow: 0 18px 60px rgb(20 33 61 / 10%);
+}
+
+.error-logo {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  margin-bottom: 12px;
+}
+
+.error-panel h1 {
+  margin: 0 0 8px;
+  font-size: 24px;
+}
+
+.error-panel p {
+  margin: 0 0 20px;
+  color: var(--share-muted);
+  line-height: 1.5;
+}
+
+.trip-hero {
+  width: 100%;
+  height: clamp(220px, 42vw, 420px);
+  background-color: var(--share-surface-strong);
+  background-position: center;
+  background-size: cover;
+}
+
+.trip-hero.no-image {
+  display: none;
+}
+
+.section {
+  width: min(100%, 880px);
+  margin: 0 auto;
+  padding: 24px 18px;
+  border-bottom: 1px solid var(--share-line);
+}
+
+.section-heading {
+  margin: 0 0 16px;
+  color: var(--share-muted);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.trip-header-section {
+  padding-top: 28px;
+}
+
+.trip-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.trip-destination {
+  min-width: 0;
+  margin: 0;
+  font-size: clamp(30px, 7vw, 52px);
+  line-height: 1.02;
+  overflow-wrap: anywhere;
+}
+
+.trip-country,
+.trip-tagline,
+.days-to-go {
+  margin: 8px 0 0;
+}
+
+.trip-country,
+.trip-tagline {
+  color: var(--share-muted);
+}
+
+.days-to-go {
+  color: var(--share-accent-dark);
+  font-weight: 700;
+}
+
+.trip-status-badge {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #e8eefc;
+  color: var(--share-accent-dark);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.status-completed {
+  background: var(--share-green-bg);
+  color: var(--share-green-text);
+}
+
+.status-cancelled {
+  background: var(--share-red-bg);
+  color: var(--share-red-text);
+}
+
+.trip-meta-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.trip-meta-item {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--share-line);
+  border-radius: var(--share-radius);
+  background: var(--share-surface);
+}
+
+.meta-label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--share-muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.meta-value {
+  display: block;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.members-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 16px;
+}
+
+.member-card {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  min-width: 0;
+  text-align: center;
+}
+
+.member-avatar {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  place-items: center;
+  border: 1px solid var(--share-line);
+  border-radius: 50%;
+  background: var(--share-surface-strong);
+  background-position: center;
+  background-size: cover;
+  color: var(--share-accent-dark);
+  font-weight: 800;
+}
+
+.member-name,
+.member-hometown {
+  max-width: 100%;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.member-name {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.member-hometown {
+  color: var(--share-muted);
+  font-size: 12px;
+}
+
+.flights-list,
+.activities-list {
+  display: grid;
+  gap: 12px;
+}
+
+.flight-card,
+.lodging-card,
+.activity-card {
+  min-width: 0;
+  border: 1px solid var(--share-line);
+  border-radius: var(--share-radius);
+  background: var(--share-surface);
+  box-shadow: 0 8px 28px rgb(20 33 61 / 5%);
+}
+
+.flight-card,
+.lodging-card,
+.activity-card {
+  padding: 16px;
+}
+
+.flight-header,
+.flight-route,
+.flight-dates,
+.activity-header,
+.activity-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.flight-traveler,
+.activity-title,
+.lodging-name {
+  font-weight: 800;
+}
+
+.flight-airline,
+.flight-dates,
+.activity-desc,
+.activity-meta,
+.lodging-address,
+.lodging-dates {
+  color: var(--share-muted);
+}
+
+.flight-number,
+.activity-likes,
+.lodging-type {
+  border-radius: 999px;
+  background: var(--share-surface-strong);
+  color: var(--share-accent-dark);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.flight-number,
+.activity-likes {
+  padding: 4px 8px;
+}
+
+.flight-route {
+  margin-top: 10px;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.flight-arrow {
+  color: var(--share-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.lodging-card {
+  display: grid;
+  gap: 6px;
+}
+
+.lodging-type {
+  justify-self: start;
+  margin: 0;
+  padding: 4px 8px;
+  text-transform: uppercase;
+}
+
+.lodging-name,
+.lodging-address,
+.lodging-dates,
+.activity-title,
+.activity-desc {
+  margin: 0;
+}
+
+.activity-header {
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.activity-title {
+  min-width: 0;
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+
+.activity-desc {
+  line-height: 1.45;
+}
+
+.activity-meta {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.cta-spacer {
+  height: 128px;
+}
+
+.cta-banner {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 10;
+  display: grid;
+  gap: 10px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--share-line);
+  background: rgb(255 255 255 / 94%);
+  box-shadow: 0 -10px 36px rgb(20 33 61 / 12%);
+  backdrop-filter: blur(12px);
+}
+
+.cta-btn,
+.store-btn {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--share-radius);
+  font-weight: 900;
+  text-align: center;
+  text-decoration: none;
+}
+
+.cta-btn {
+  width: 100%;
+  border: 0;
+  background: var(--share-accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+.cta-btn:hover {
+  background: var(--share-accent-dark);
+}
+
+.cta-store-row,
+.store-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.store-btn {
+  border: 1px solid var(--share-line);
+  background: var(--share-surface);
+  color: var(--share-text);
+  font-size: 14px;
+}
+
+.store-btn:hover {
+  border-color: var(--share-accent);
+}
+
+@media (min-width: 640px) {
+  .cta-banner {
+    grid-template-columns: minmax(180px, 1fr) minmax(280px, 1.4fr);
+    align-items: center;
+    width: min(720px, calc(100% - 32px));
+    margin: 0 auto;
+    border: 1px solid var(--share-line);
+    border-bottom: 0;
+    border-radius: var(--share-radius) var(--share-radius) 0 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .section {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .trip-title-row {
+    display: grid;
+  }
+
+  .trip-status-badge {
+    justify-self: start;
+  }
+
+}
