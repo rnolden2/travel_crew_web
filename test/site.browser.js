@@ -35,13 +35,13 @@ try {
   await page.goto(base);
   await page.screenshot({path: '/private/tmp/travelcrew-web-mobile.png', fullPage: true});
   // A deployed assistant URL deliberately controls launch visibility.
-  process.env.VITE_ASSISTANT_BASE_URL = 'https://universal-code-135522.web.app/assistant';
+  process.env.VITE_ASSISTANT_BASE_URL = 'https://travelcrew.app/assistant';
   await page.goto(base);
   assert.equal(await page.locator('[data-assistant]').isVisible(), true);
-  assert.equal(await page.locator('#manage-assistants').getAttribute('href'), 'https://universal-code-135522.web.app/assistant/connect');
+  assert.equal(await page.locator('#manage-assistants').getAttribute('href'), 'https://travelcrew.app/assistant/connect');
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.getByRole('button', {name: 'Copy connection URL'}).click();
-  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'https://universal-code-135522.web.app/assistant/mcp');
+  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'https://travelcrew.app/mcp');
   process.env.VITE_ASSISTANT_BASE_URL = '';
   await page.route('**/api/shared-trip?*', (route) => route.fulfill({json: {
     trip: {id: tripId, title: 'Example itinerary', destination: 'Tokyo', country: 'Japan', tripStatus: 'upcoming', tripStartDate: '2020-04-10', tripEndDate: '2020-04-12', images: []},

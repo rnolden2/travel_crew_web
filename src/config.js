@@ -10,6 +10,7 @@ export const config = {
   playStoreUrl: readConfig('VITE_PLAY_STORE_URL'),
   appScheme: readConfig('VITE_APP_SCHEME', 'travelcrew'),
   assistantBaseUrl: readConfig('VITE_ASSISTANT_BASE_URL'),
+  assistantMcpUrl: readConfig('VITE_ASSISTANT_MCP_URL'),
 };
 
 export function httpsUrl(value) {

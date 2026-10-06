@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createServer } from "node:http";
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
+import {createAssistantProxy, isAssistantPath} from './assistant-proxy.mjs';
 
 const port = Number(process.env.PORT || 8080);
 const distDir = fileURLToPath(new URL("./dist", import.meta.url));
@@ -55,6 +56,7 @@ const runtimeConfigKeys = [
   "VITE_PLAY_STORE_URL",
   "VITE_APP_SCHEME",
   "VITE_ASSISTANT_BASE_URL",
+  "VITE_ASSISTANT_MCP_URL",
 ];
 
 function sendRuntimeConfig(response) {
@@ -392,18 +394,21 @@ function sendFile(response, filePath, statusCode = 200) {
   createReadStream(filePath).pipe(response);
 }
 
-export function createWebServer({database} = {}) {
+export function createWebServer({database, assistantUpstream = process.env.ASSISTANT_UPSTREAM_URL} = {}) {
+ const assistantProxy = createAssistantProxy(assistantUpstream);
  return createServer((request, response) => {
   response.setHeader("X-Content-Type-Options", "nosniff");
   response.setHeader("Referrer-Policy", "no-referrer");
+  const url = new URL(request.url || '/', 'http://localhost');
+  if (isAssistantPath(url.pathname)) {
+    if (assistantProxy) assistantProxy(request, response, url);
+    else sendJson(response, 503, {error: 'not_configured', error_description: 'Assistant connections are not configured yet'});
+    return;
+  }
   if (!["GET", "HEAD"].includes(request.method)) {
     response.setHeader("Allow", "GET, HEAD");
     sendJson(response, 405, {error: "Method not allowed"}); return;
   }
-  const url = new URL(
-    request.url || "/",
-    "http://localhost",
-  );
 
   if (url.pathname === "/api/shared-trip") {
     handleSharedTripApi(url, response, database);
@@ -417,6 +422,11 @@ export function createWebServer({database} = {}) {
 
   if (url.pathname === "/runtime-config.js") {
     sendRuntimeConfig(response);
+    return;
+  }
+  if (url.pathname === '/.well-known/openai-apps-challenge' && process.env.OPENAI_APPS_CHALLENGE) {
+    response.writeHead(200, {'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store'});
+    response.end(process.env.OPENAI_APPS_CHALLENGE);
     return;
   }
   if (url.pathname === "/about-us") {

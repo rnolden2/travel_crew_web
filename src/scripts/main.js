@@ -13,6 +13,7 @@ document.addEventListener('keydown', (event) => { if (event.key === 'Escape') { 
 
 // Deployment supplies this URL only once assistant account linking is live.
 const assistantBase = httpsUrl(config.assistantBaseUrl)?.replace(/\/$/, '');
+const assistantMcp = httpsUrl(config.assistantMcpUrl) || (assistantBase ? `${new URL(assistantBase).origin}/mcp` : '');
 const assistantSection = document.querySelector('[data-assistant]');
 if (assistantBase && assistantSection) {
   assistantSection.hidden = false;
@@ -20,10 +21,10 @@ if (assistantBase && assistantSection) {
   document.querySelector('#copy-assistant-url').addEventListener('click', async () => {
     const status = document.querySelector('#connection-status');
     try {
-      await navigator.clipboard.writeText(`${assistantBase}/mcp`);
+      await navigator.clipboard.writeText(assistantMcp);
       status.textContent = 'Connection URL copied. Add it as a custom MCP connection in your assistant.';
     } catch {
-      status.textContent = `Copy this connection URL: ${assistantBase}/mcp`;
+      status.textContent = `Copy this connection URL: ${assistantMcp}`;
     }
   });
 }
