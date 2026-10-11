@@ -28,23 +28,30 @@ See `.env.example`. Only the following public settings are exposed by `/runtime-
 | `VITE_APP_STORE_URL` | Released iOS listing; defaults to Travel Crew's App Store page. |
 | `VITE_PLAY_STORE_URL` | Verified Android listing. Blank hides the download link. |
 | `VITE_APP_SCHEME` | App URL scheme, default `travelcrew`. |
-| `VITE_ASSISTANT_BASE_URL` | Deployed assistant service base URL, ending in `/assistant`. Blank hides direct assistant controls. |
+| `VITE_ASSISTANT_BASE_URL` | Account-management base URL, production `https://travelcrew.app/assistant`. Blank hides direct assistant controls. |
+| `VITE_ASSISTANT_MCP_URL` | Canonical connection URL, production `https://travelcrew.app/mcp`. |
+| `ASSISTANT_UPSTREAM_URL` | Server-only fixed HTTPS origin of the deployed assistant function. |
+| `OPENAI_APPS_CHALLENGE` | Exact portal-issued domain-verification token, served as plain text at `/.well-known/openai-apps-challenge`. |
 
 `FIRESTORE_DATABASE_ID` defaults to `travel-crew-db-2`. `GOOGLE_MAPS_SERVER_KEY` stays on the server. `GOOGLE_PLACES_API_KEY` and `GOOGLE_MAPS_API_KEY` are accepted as legacy server aliases. The website no longer uses browser Firebase credentials or a waitlist database.
 
-The manual AI import instructions work independently of the assistant service. Enable direct assistant controls only after deploying and verifying the separately implemented assistant backend. The site then offers its `/mcp` connection URL and `/connect` account-management page. Setting this URL does not deploy that backend.
+The manual AI import instructions work independently of the assistant service. Enable direct assistant controls only after deploying and verifying the separately implemented assistant backend. The site offers the canonical `/mcp` connection URL and `/assistant/connect` account-management page. `assistant-proxy.mjs` forwards only MCP, assistant, and OAuth discovery routes to the configured backend, preserving authorization and consent cookies. Setting these URLs does not deploy the backend. See [client setup and submission](../integrations/README.md).
 
 ## Shared-trip behavior
 
-`GET /api/shared-trip?tripId=<id>` supplies the `/trip/<id>` preview. The server reads an explicit allowlist of trip, activity, flight, and public crew fields. It never returns expense records, chat, or private account fields.
+`GET /api/shared-trip?tripId=<id>` supplies the `/trip/<id>` preview. The server reads an explicit allowlist of trip, activity, flight, lodging, and public crew fields. It never returns expense records, chat, or private account fields.
 
 - Only trips with `isShared: true` are available. A private trip can still have an explicitly created share link, matching the app's sharing behavior.
 - Deleted or moderation-removed trips and trips owned by deleted or restricted accounts return 404. Departed, deleted, restricted, and moderation-removed crew profiles are excluded.
 - Nested activity and flight records are preferred, with compatibility reads for legacy collections. Reads are capped at 100 records per collection.
 - App links use `travelcrew://trips/<UUID>`, matching the current Flutter link parser. Legacy non-UUID previews remain readable without an unsupported app link.
+- Lodging includes the original trip-level fields and additional `trips/{tripId}/lodgings` options. Like counts exclude travelers not visible in the shared crew list; voter IDs are not returned.
+- Empty lodging, flights, activities, and crew sections are hidden. Expenses remain excluded from the public API.
+- The header identifies the trip creator and privacy setting. A private trip's explicit share link does not change its privacy setting.
+- `GET /api/shared-trip?tripId=<id>&format=ics` downloads one all-day calendar event spanning all travel dates, with the same sharing authorization as the preview. Invalid date ranges return 422. Append `&activityId=<id>` to download that activity as a separate timed event. Missing start times or invalid ranges return 422; a missing end time defaults to one hour. Explicit timezone offsets are preserved as UTC instants, while unzoned times remain floating calendar times. Calendar exports do not sync subsequent edits.
 - Opening the app is an explicit action; the page does not automatically redirect users to a store.
 
-`GET /api/place-photo` proxies validated Places photo resource names using the server key. The server accepts GET and HEAD requests only. Historical privacy, terms, and Travel Chain URLs remain supported; `/about-us` redirects to the homepage's About section.
+`GET /api/place-photo` proxies validated Places photo resource names using the server key. The shared-trip/photo and static routes accept GET and HEAD requests only. Assistant routes forward their required POST and DELETE methods to the authenticated backend. Historical privacy, terms, and Travel Chain URLs remain supported; `/about-us` redirects to the homepage's About section.
 
 ## Verification
 
@@ -112,13 +119,13 @@ The image is tagged with the unique Cloud Build ID so manual uploads work withou
 
 Sign in with `gcloud auth login` if needed. `cloudbuild.yaml` selects the dedicated build identity. The deploy command pins the source staging bucket to match its read permission. The setup command changes IAM; the deploy command uses the existing repository and service without changing IAM policies. Allow time for new IAM grants to propagate before the first deployment.
 
-Edit the runtime values in the `substitutions` section of `cloudbuild.yaml`: `_FIRESTORE_DATABASE_ID`, `_APP_STORE_URL`, `_PLAY_STORE_URL`, `_APP_SCHEME`, and `_ASSISTANT_BASE_URL`. The deploy step maps these to the website's environment variables. Blank Play Store and assistant URLs keep those controls hidden until ready.
+Edit the runtime values in the `substitutions` section of `cloudbuild.yaml`: `_FIRESTORE_DATABASE_ID`, `_APP_STORE_URL`, `_PLAY_STORE_URL`, `_APP_SCHEME`, `_ASSISTANT_BASE_URL`, `_ASSISTANT_MCP_URL`, and `_ASSISTANT_UPSTREAM_URL`. The deploy step maps these to the website's environment variables. Blank Play Store and assistant URLs keep those controls hidden until ready.
 
-Deployment uses `--update-env-vars` to apply these five settings while preserving other environment variables, runtime identity, and domain configuration. See Google's [environment variable documentation](https://docs.cloud.google.com/run/docs/configuring/services/environment-variables).
+Deployment uses `--update-env-vars` to apply these named settings while preserving other environment variables, runtime identity, and domain configuration. See Google's [environment variable documentation](https://docs.cloud.google.com/run/docs/configuring/services/environment-variables).
 
 The deploy step also binds `GOOGLE_MAPS_SERVER_KEY` to the project's Secret Manager secret `kGoogleApiKey` using `--update-secrets`. `_GOOGLE_MAPS_SECRET_VERSION` pins enabled version `1`; update it when rotating the key. Cloud Run reads the value at instance startup; the key is never copied into this YAML, the Docker image, or the browser configuration. The runtime service account needs `roles/secretmanager.secretAccessor` on this secret or an inherited equivalent. Other secret bindings are preserved. See Google's [Cloud Run secret configuration](https://docs.cloud.google.com/run/docs/configuring/services/secrets).
 
-Local `.env` files are not deployed. The assistant Firebase Hosting/service deployment is separate. Creating this configuration and running local checks does not publish either service; the deploy command does publish the website.
+Local `.env` files are not deployed. The assistant function deployment is separate; the Cloud Run website routes the custom domain to it. Creating this configuration and running local checks does not publish either service; the deploy command does publish the website.
 
 ## Layout
 

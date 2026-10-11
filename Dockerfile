@@ -19,6 +19,7 @@ RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
 COPY server.mjs ./server.mjs
 COPY assistant-proxy.mjs ./assistant-proxy.mjs
+COPY src/trip-share/calendar.js src/trip-share/sections.js ./src/trip-share/
 
 EXPOSE 8080
 

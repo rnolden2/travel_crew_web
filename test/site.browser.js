@@ -44,9 +44,9 @@ try {
   assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'https://travelcrew.app/mcp');
   process.env.VITE_ASSISTANT_BASE_URL = '';
   await page.route('**/api/shared-trip?*', (route) => route.fulfill({json: {
-    trip: {id: tripId, title: 'Example itinerary', destination: 'Tokyo', country: 'Japan', tripStatus: 'upcoming', tripStartDate: '2020-04-10', tripEndDate: '2020-04-12', images: []},
-    members: [{displayName: '<script>unsafe</script>'}], flights: [],
-    activities: [{title: 'Museum', startDateTime: '2020-04-10T10:00:00+09:00', endDateTime: '2020-04-10T11:00:00+09:00'}],
+    trip: {id: tripId, title: 'Example itinerary', destination: 'Tokyo', country: 'Japan', tripStatus: 'upcoming', tripStartDate: '2020-04-10', tripEndDate: '2020-04-12', images: [], createdBy: 'owner', isPrivate: true},
+    members: [{uid: 'owner', displayName: '<script>unsafe</script>'}], flights: [],
+    activities: [{id: 'museum', title: 'Museum', startDateTime: '2020-04-10T10:00:00+09:00', endDateTime: '2020-04-10T11:00:00+09:00'}, {id: 'unscheduled', title: 'Unscheduled'}],
   }}));
   await page.goto(`${base}/trip/${tripId}`);
   await page.getByRole('heading', {name: 'Tokyo', exact: true}).waitFor();
@@ -54,7 +54,36 @@ try {
   assert.equal(await page.getByText('Past', {exact: true}).isVisible(), true);
   assert.equal(await page.getByText('<script>unsafe</script>', {exact: true}).isVisible(), true);
   assert.match(await page.locator('.activity-time').textContent(), /\d:\d{2}/);
+  assert.equal(await page.locator('#lodging-section').isVisible(), false);
+  assert.equal(await page.locator('#flights-section').isVisible(), false);
+  assert.equal(await page.getByText('🔒 Private trip', {exact: true}).isVisible(), true);
+  assert.match(await page.locator('.trip-owner').textContent(), /Created by <script>unsafe<\/script>/);
+  assert.equal(await page.getByRole('link', {name: 'Add to Calendar'}).getAttribute('href'), `/api/shared-trip?tripId=${tripId}&format=ics`);
+  assert.equal(await page.getByRole('link', {name: 'Add Museum to calendar', exact: true}).getAttribute('href'), `/api/shared-trip?tripId=${tripId}&format=ics&activityId=museum`);
+  assert.equal(await page.locator('.activity-card').filter({hasText: 'Unscheduled'}).getByRole('link').count(), 0);
+  assert.equal(await page.getByText('Set a start date and time in the app to add this activity to your calendar.').isVisible(), true);
+  await page.screenshot({path: '/private/tmp/travelcrew-shared-trip.png', fullPage: true});
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+  await page.unroute('**/api/shared-trip?*');
+  await page.route('**/api/shared-trip?*', (route) => route.fulfill({json: {
+    trip: {id: tripId, destination: 'Tokyo', createdBy: 'owner', isPrivate: false, tripStartDate: '2027-04-10'},
+    members: [{uid: 'owner', displayName: 'Alex'}], activities: [],
+    flights: [{displayName: 'Alex', flightNumber: 'TC123'}, {displayName: 'Blank', flightNumber: ' '}],
+    lodgings: [
+      {id: 'legacy', hotelName: 'First hotel', checkInDate: '2027-04-10', expensePerNight: 99},
+      {id: 'second', hotelName: 'Second hotel', hotelAddress: 'Main Street', likesCount: 2},
+      {id: 'blank', hotelName: ' '},
+    ],
+  }}));
+  await page.goto(`${base}/trip/${tripId}`);
+  await page.getByText('Second hotel', {exact: true}).waitFor();
+  assert.equal(await page.locator('.lodging-card').count(), 2);
+  assert.equal(await page.locator('.flight-card').count(), 1);
+  assert.equal(await page.locator('#activities-section').isVisible(), false);
+  assert.equal(await page.getByText('🌐 Public trip', {exact: true}).isVisible(), true);
+  assert.equal(await page.getByText('2 likes', {exact: true}).isVisible(), true);
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+  await page.screenshot({path: '/private/tmp/travelcrew-shared-lodging.png', fullPage: true});
   await page.unroute('**/api/shared-trip?*');
   await page.route('**/api/shared-trip?*', (route) => route.fulfill({status: 404, json: {error: 'Trip not found'}}));
   await page.goto(`${base}/trip/${tripId}`);

@@ -464,3 +464,12 @@ a {
   }
 
 }
+
+.trip-owner { margin: 12px 0 8px; }
+.trip-privacy { display: inline-flex; margin: 0 16px 12px 0; font-size: 14px; }
+.calendar-button { display: inline-flex; padding: 10px 16px; border-radius: 10px; background: var(--share-accent); color: white; text-decoration: none; font-weight: 600; }
+.calendar-button:hover { filter: brightness(.9); }
+.calendar-hint { font-size: 13px; color: var(--share-muted); }
+.lodging-card + .lodging-card { margin-top: 12px; }
+
+.activity-calendar { margin-top: 14px; font-size: 14px; }

@@ -80,3 +80,56 @@ test('HTTP API validates requests, stays read-only and serves current routes', a
   assert.equal(config.headers.get('cache-control'), 'no-store');
   assert.ok(!(await config.text()).includes('GOOGLE_MAPS_SERVER_KEY'));
 });
+
+test('shared lodging includes legacy and individual options without publishing voters or hidden data', async () => {
+  const {db, records} = fixture({hotelName: 'Original hotel', expensePerNight: 99});
+  records.set(`trips/${tripId}/lodgings/second`, {hotelName: 'Second hotel', hotelAddress: 'Main Street', expensePerNight: 80, privateNote: 'secret'});
+  records.set(`trips/${tripId}/lodgings/blank`, {hotelName: '  '});
+  records.set(`trips/${tripId}/lodgings/removed`, {hotelName: 'Hidden hotel', moderationRemoved: true});
+  records.set(`trips/${tripId}/lodgings/second/likes/owner`, {userId: 'owner'});
+  records.set(`trips/${tripId}/lodgings/second/likes/departed`, {userId: 'departed'});
+  const data = await fetchSharedTripData(tripId, db);
+  assert.deepEqual(data.lodgings.map((option) => option.hotelName), ['Original hotel', 'Second hotel']);
+  assert.equal(data.lodgings[1].likesCount, 1);
+  assert.equal(data.lodgings[1].privateNote, undefined);
+  assert.equal(data.lodgings[1].likedBy, undefined);
+  assert.equal(data.trip.isPrivate, true);
+});
+
+test('calendar downloads enforce current sharing access and valid dates', async () => {
+  const {db, records} = fixture({tripStartDate: '2027-04-10', tripEndDate: '2027-04-12'});
+  const server = createWebServer({database: db}); servers.push(server);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const url = `http://127.0.0.1:${server.address().port}/api/shared-trip?tripId=${tripId}&format=ics`;
+  const response = await fetch(url);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type'), /text\/calendar/);
+  assert.ok((await response.text()).includes('DTEND;VALUE=DATE:20270413'));
+  const trip = records.get(`trips/${tripId}`);
+  trip.tripEndDate = '2027-04-01';
+  assert.equal((await fetch(url)).status, 422);
+  trip.isShared = false;
+  assert.equal((await fetch(url)).status, 404);
+});
+
+
+test('individual activity downloads respect trip access and exclude removed or unrelated activities', async () => {
+  const {db, records} = fixture();
+  const server = createWebServer({database: db}); servers.push(server);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const url = `http://127.0.0.1:${server.address().port}/api/shared-trip?tripId=${tripId}&format=ics&activityId=`;
+  const response = await fetch(url + 'one');
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-disposition'), /activity-one.ics/);
+  const calendar = await response.text();
+  assert.ok(calendar.includes('SUMMARY:Museum'));
+  assert.ok(calendar.includes('DTSTART:20270410T010000Z'));
+  assert.ok(calendar.includes('DTEND:20270410T020000Z'));
+  assert.equal((await fetch(url + 'removed')).status, 404);
+  assert.equal((await fetch(url + 'another-trip-activity')).status, 404);
+  assert.equal((await fetch(url + 'bad/path')).status, 400);
+  records.set(`trips/${tripId}/activities/unscheduled`, {title: 'Unscheduled'});
+  assert.equal((await fetch(url + 'unscheduled')).status, 422);
+  records.get(`trips/${tripId}`).isShared = false;
+  assert.equal((await fetch(url + 'one')).status, 404);
+});

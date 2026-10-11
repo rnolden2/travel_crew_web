@@ -1,3 +1,5 @@
+import {tripCalendar, activityCalendar} from './calendar.js';
+import {hasLodging, hasFlight} from './sections.js';
 import { applyStoreLinks } from '../config.js';
 
 function byId(id) {
@@ -131,14 +133,14 @@ export function renderError() {
   applyStoreLinks();
 }
 
-export function renderTrip({ trip, members = [], activities = [], flights = [] }) {
+export function renderTrip({ trip, members = [], activities = [], flights = [], lodgings }) {
   updateMetaTags(trip);
   renderHero(trip);
-  renderHeader(trip);
+  renderHeader(trip, members);
   renderMembers(members);
   renderFlights(flights);
-  renderLodging(trip);
-  renderActivities(activities);
+  renderLodging(lodgings ?? (hasLodging(trip) ? [trip] : []));
+  renderActivities(activities, trip.id);
   renderCTABanner();
   show('trip-content');
   show('cta-banner');
@@ -175,7 +177,7 @@ function renderHero(trip) {
   }
 }
 
-function renderHeader(trip) {
+function renderHeader(trip, members) {
   const section = byId('trip-header');
   if (!section) return;
   clear(section);
@@ -190,6 +192,18 @@ function renderHeader(trip) {
   section.appendChild(titleRow);
   appendText(section, 'p', 'trip-country', [trip.country, trip.continent].filter(Boolean).join(' | '));
   if (trip.title && trip.title !== trip.destination) appendText(section, 'p', 'trip-tagline', trip.title);
+
+  const owner = members.find((member) => member.uid === trip.createdBy);
+  appendText(section, 'p', 'trip-owner', `Created by ${owner?.displayName || owner?.firstName || 'Unavailable'}`);
+  const privacy = el('span', 'trip-privacy', trip.isPrivate ? '🔒 Private trip' : '🌐 Public trip');
+  section.appendChild(privacy);
+  if (tripCalendar(trip)) {
+    const calendar = el('a', 'calendar-button', 'Add to Calendar');
+    calendar.href = `/api/shared-trip?tripId=${encodeURIComponent(trip.id)}&format=ics`;
+    calendar.setAttribute('download', `travelcrew-${trip.id}.ics`);
+    section.appendChild(calendar);
+    appendText(section, 'p', 'calendar-hint', 'Download a calendar event for the trip dates.');
+  }
 
   const metaRow = el('div', 'trip-meta-row');
   [
@@ -234,6 +248,7 @@ function renderMembers(members) {
 }
 
 function renderFlights(flights) {
+  flights = flights.filter(hasFlight);
   const section = byId('flights-section');
   if (!section) return;
   clear(section);
@@ -266,30 +281,28 @@ function renderFlights(flights) {
   show('flights-section');
 }
 
-function renderLodging(trip) {
+function renderLodging(lodgings) {
   const section = byId('lodging-section');
   if (!section) return;
   clear(section);
-
-  const hasLodging = trip.lodgingType || trip.hotelName || trip.hotelAddress || trip.checkInDate || trip.checkOutDate;
-  if (!hasLodging) {
-    hide('lodging-section');
-    return;
+  const options = lodgings.filter(hasLodging);
+  if (!options.length) { hide('lodging-section'); return; }
+  section.append(sectionHeading('Lodging'));
+  for (const option of options) {
+    const card = el('div', 'lodging-card');
+    appendText(card, 'p', 'lodging-type', option.lodgingType);
+    appendText(card, 'p', 'lodging-name', option.hotelName);
+    appendText(card, 'p', 'lodging-address', option.hotelAddress);
+    const dates = [option.checkInDate ? `Check-in: ${formatDate(option.checkInDate)}` : '', option.checkOutDate ? `Check-out: ${formatDate(option.checkOutDate)}` : ''].filter(Boolean);
+    appendText(card, 'p', 'lodging-dates', dates.join(' | '));
+    if (option.expensePerNight != null) appendText(card, 'p', 'lodging-cost', `$${Number(option.expensePerNight).toFixed(2)} / night`);
+    if (option.likesCount > 0) appendText(card, 'p', 'lodging-likes', `${option.likesCount} ${option.likesCount === 1 ? 'like' : 'likes'}`);
+    section.append(card);
   }
-
-  const card = el('div', 'lodging-card');
-  appendText(card, 'p', 'lodging-type', trip.lodgingType);
-  appendText(card, 'p', 'lodging-name', trip.hotelName);
-  appendText(card, 'p', 'lodging-address', trip.hotelAddress);
-
-  const dates = [trip.checkInDate ? `Check-in: ${formatDate(trip.checkInDate)}` : '', trip.checkOutDate ? `Check-out: ${formatDate(trip.checkOutDate)}` : ''].filter(Boolean);
-  appendText(card, 'p', 'lodging-dates', dates.join(' | '));
-
-  section.append(sectionHeading('Lodging'), card);
   show('lodging-section');
 }
 
-function renderActivities(activities) {
+function renderActivities(activities, tripId) {
   const section = byId('activities-section');
   if (!section) return;
   clear(section);
@@ -312,6 +325,16 @@ function renderActivities(activities) {
     card.appendChild(header);
     appendText(card, 'p', 'activity-desc', activity.description);
     if (meta.children.length) card.appendChild(meta);
+    if (activity.id && activityCalendar(tripId, activity)) {
+      const calendar = el('a', 'calendar-button activity-calendar', 'Add to Calendar');
+      calendar.href = `/api/shared-trip?tripId=${encodeURIComponent(tripId)}&format=ics&activityId=${encodeURIComponent(activity.id)}`;
+      calendar.setAttribute('download', `travelcrew-activity-${activity.id}.ics`);
+      calendar.setAttribute('aria-label', `Add ${activity.title || 'activity'} to calendar`);
+      card.appendChild(calendar);
+      if (!activity.endDateTime) appendText(card, 'p', 'calendar-hint', 'No end time set; calendar event defaults to 1 hour.');
+    } else {
+      appendText(card, 'p', 'calendar-hint', activity.startDateTime ? 'Calendar export unavailable: check the activity times in the app.' : 'Set a start date and time in the app to add this activity to your calendar.');
+    }
     list.appendChild(card);
   });
 

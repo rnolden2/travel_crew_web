@@ -1,3 +1,5 @@
+import {tripCalendar, activityCalendar} from './src/trip-share/calendar.js';
+import {hasLodging, hasFlight} from './src/trip-share/sections.js';
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -186,6 +188,18 @@ function sanitizeFlight(id, flight) {
   };
 }
 
+function sanitizeLodging(id, lodging) {
+  return {
+    id,
+    lodgingType: getString(lodging.lodgingType),
+    hotelName: getString(lodging.hotelName),
+    hotelAddress: getString(lodging.hotelAddress),
+    checkInDate: serializeValue(lodging.checkInDate),
+    checkOutDate: serializeValue(lodging.checkOutDate),
+    expensePerNight: getNumber(lodging.expensePerNight),
+  };
+}
+
 function sanitizeTrip(id, trip) {
   return {
     id,
@@ -194,6 +208,7 @@ function sanitizeTrip(id, trip) {
     country: getString(trip.country),
     continent: getString(trip.continent),
     tripStatus: getString(trip.tripStatus),
+    isPrivate: trip.isPrivate === true,
     tripStartDate: serializeValue(trip.tripStartDate),
     tripEndDate: serializeValue(trip.tripEndDate),
     startDate: serializeValue(trip.startDate),
@@ -256,7 +271,7 @@ export async function fetchSharedTripData(tripId, db = getDatabase()) {
   ]);
   if (ownerAccount.data()?.isDeleted || ownerSafety.data()?.restricted) return null;
 
-  const [activitiesDocs, flightsDocs, membersSnap] = await Promise.all([
+  const [activitiesDocs, flightsDocs, membersSnap, lodgingsSnap] = await Promise.all([
     fetchNestedOrLegacyDocs({
       db,
       tripId,
@@ -274,6 +289,7 @@ export async function fetchSharedTripData(tripId, db = getDatabase()) {
       .doc(tripId)
       .collection(collections.members)
       .limit(100).get(),
+    db.collection(collections.trips).doc(tripId).collection("lodgings").limit(100).get(),
   ]);
 
   // Explicit departures override historical joinedUsers arrays.
@@ -290,6 +306,18 @@ export async function fetchSharedTripData(tripId, db = getDatabase()) {
   }));
   const visibleUsers = new Set(profiles.filter(Boolean).map((item) => item.uid));
 
+  const legacy = sanitizeLodging('legacy', trip);
+  const lodgings = [
+    ...(hasLodging(legacy) ? [legacy] : []),
+    ...lodgingsSnap.docs.filter((doc) => !doc.data().moderationRemoved)
+      .map((doc) => sanitizeLodging(doc.id, doc.data())).filter(hasLodging),
+  ];
+  await Promise.all(lodgings.map(async (lodging) => {
+    const likes = await db.collection(collections.trips).doc(tripId)
+      .collection('lodgings').doc(lodging.id).collection('likes').limit(100).get();
+    lodging.likesCount = likes.docs.filter((doc) => visibleUsers.has(doc.id)).length;
+  }));
+
   return {
     trip: {...sanitizeTrip(tripDoc.id, trip), joinedUsers: getStringArray(trip.joinedUsers).filter((uid) => visibleUsers.has(uid))},
     members: profiles.filter((item) => item?.profile.exists)
@@ -297,8 +325,9 @@ export async function fetchSharedTripData(tripId, db = getDatabase()) {
     activities: activitiesDocs.filter((doc) => !doc.data().moderationRemoved).map((doc) =>
       sanitizeActivity(doc.id, doc.data()),
     ),
+    lodgings,
     flights: flightsDocs.filter((doc) => !doc.data().moderationRemoved && visibleUsers.has(doc.data().userId))
-      .map((doc) => sanitizeFlight(doc.id, doc.data())),
+      .map((doc) => sanitizeFlight(doc.id, doc.data())).filter(hasFlight),
   };
 }
 
@@ -309,6 +338,10 @@ async function handleSharedTripApi(url, response, db) {
     return;
   }
 
+  const activityId = url.searchParams.get('activityId');
+  if (activityId !== null && !/^[A-Za-z0-9_-]{1,128}$/.test(activityId)) {
+    sendJson(response, 400, {error: 'Invalid activity ID'}); return;
+  }
   try {
     const data = await fetchSharedTripData(tripId, db);
     if (!data) {
@@ -316,6 +349,19 @@ async function handleSharedTripApi(url, response, db) {
       return;
     }
 
+    if (url.searchParams.get('format') === 'ics') {
+      const activity = activityId === null ? null : data.activities.find((item) => item.id === activityId);
+      if (activityId !== null && !activity) { sendJson(response, 404, {error: 'Activity not found'}); return; }
+      const calendar = activity ? activityCalendar(tripId, activity) : tripCalendar(data.trip);
+      if (!calendar) { sendJson(response, 422, {error: activity ? 'Activity times unavailable' : 'Trip dates unavailable'}); return; }
+      response.writeHead(200, {
+        'Cache-Control': 'no-store',
+        'Content-Type': 'text/calendar; charset=utf-8',
+        'Content-Disposition': `attachment; filename="travelcrew-${tripId}${activityId === null ? '' : `-activity-${activityId}`}.ics"`,
+      });
+      response.end(calendar);
+      return;
+    }
     sendJson(response, 200, data);
   } catch (error) {
     console.error("shared_trip_failed", {code: error.code || "internal"});
