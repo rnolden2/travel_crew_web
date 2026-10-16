@@ -133,3 +133,33 @@ test('individual activity downloads respect trip access and exclude removed or u
   records.get(`trips/${tripId}`).isShared = false;
   assert.equal((await fetch(url + 'one')).status, 404);
 });
+
+test('transportation mixes modes with old flights and exposes only allowed fields from current authors', async () => {
+  const {db, records} = fixture();
+  records.set(`trips/${tripId}/transportation/ride`, {userId: 'member', mode: 'rideshare', provider: 'Uber', travelerNames: ['Member'], notes: 'Pickup outside', privateToken: 'SECRET'});
+  records.set(`trips/${tripId}/transportation/removed`, {userId: 'owner', mode: 'bus', moderationRemoved: true});
+  records.set(`trips/${tripId}/transportation/departed`, {userId: 'departed', mode: 'train'});
+  records.set(`trips/${tripId}/transportation/restricted`, {userId: 'restricted', mode: 'taxi'});
+  records.set('flights/legacy', {tripId, userId: 'member', flightNumber: 'LEGACY123'});
+  const result = await fetchSharedTripData(tripId, db);
+  assert.deepEqual(result.transportation.map((entry) => entry.mode).sort(), ['flight', 'flight', 'rideshare']);
+  assert.equal(result.transportation.find((entry) => entry.mode === 'rideshare').provider, 'Uber');
+  assert.equal(JSON.stringify(result).includes('SECRET'), false);
+  assert.equal(result.flights.some((flight) => flight.flightNumber === 'LEGACY123'), true);
+});
+
+test('legacy trip summary is included once and new unscheduled flights remain visible', async () => {
+  const {db, records} = fixture({flightNumber: 'AB123'});
+  records.set(`trips/${tripId}/flights/new`, {userId: 'owner', transportTitle: 'Flight'});
+  const result = await fetchSharedTripData(tripId, db);
+  assert.equal(result.transportation.filter((entry) => entry.serviceNumber === 'AB123').length, 1);
+  assert.equal(result.transportation.some((entry) => entry.title === 'Flight'), true);
+});
+
+test('moderated mirrored flights cannot reappear through legacy trip fields', async () => {
+  const {db, records} = fixture({flightNumber: 'AB123'});
+  records.set(`trips/${tripId}/flights/owner`, {userId: 'owner', flightNumber: 'AB123', moderationRemoved: true});
+  const result = await fetchSharedTripData(tripId, db);
+  assert.equal(result.transportation.some((entry) => entry.serviceNumber === 'AB123'), false);
+  assert.equal(result.trip.flightNumber, null);
+});

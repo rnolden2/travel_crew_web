@@ -1,3 +1,4 @@
+import {flightTransport, sameTransportFlight, sortTransportation, transportModes} from './src/trip-share/transportation.js';
 import {tripCalendar, activityCalendar} from './src/trip-share/calendar.js';
 import {hasLodging, hasFlight} from './src/trip-share/sections.js';
 import { createReadStream, existsSync, statSync } from "node:fs";
@@ -179,12 +180,25 @@ function sanitizeFlight(id, flight) {
     id,
     userId: getString(flight.userId),
     displayName: getString(flight.displayName),
+    transportTitle: getString(flight.transportTitle),
+    travelerNames: getStringArray(flight.travelerNames).slice(0, 50),
+    driver: getString(flight.driver), notes: getString(flight.notes),
     airlineName: getString(flight.airlineName),
     flightNumber: getString(flight.flightNumber),
     departureAirport: getString(flight.departureAirport),
     arrivalAirport: getString(flight.arrivalAirport),
     departureDate: serializeValue(flight.departureDate),
     arrivalDate: serializeValue(flight.arrivalDate),
+  };
+}
+
+function sanitizeTransportation(id, entry) {
+  return {id: `transportation:${id}`, mode: Object.hasOwn(transportModes, entry.mode) ? entry.mode : 'other',
+    userId: getString(entry.userId), displayName: getString(entry.displayName),
+    title: getString(entry.title), origin: getString(entry.origin), destination: getString(entry.destination),
+    departure: serializeValue(entry.departure), arrival: serializeValue(entry.arrival),
+    provider: getString(entry.provider), serviceNumber: getString(entry.serviceNumber),
+    driver: getString(entry.driver), notes: getString(entry.notes), travelerNames: getStringArray(entry.travelerNames).slice(0, 50),
   };
 }
 
@@ -240,7 +254,7 @@ async function fetchNestedOrLegacyDocs({
   db,
   tripId,
   nestedCollection,
-  legacyCollection,
+  legacyCollection, mergeLegacy = false,
 }) {
   const nestedSnap = await db
     .collection(collections.trips)
@@ -248,13 +262,13 @@ async function fetchNestedOrLegacyDocs({
     .collection(nestedCollection)
     .limit(100).get();
 
-  if (!nestedSnap.empty) return nestedSnap.docs;
+  if (!nestedSnap.empty && !mergeLegacy) return nestedSnap.docs;
 
   const legacySnap = await db
     .collection(legacyCollection)
     .where("tripId", "==", tripId)
     .limit(100).get();
-  return legacySnap.docs;
+  return mergeLegacy ? [...nestedSnap.docs, ...legacySnap.docs.filter((old) => !nestedSnap.docs.some((current) => current.id === old.id && sameTransportFlight(flightTransport(sanitizeFlight(old.id, old.data())), flightTransport(sanitizeFlight(current.id, current.data())))))] : legacySnap.docs;
 }
 
 export async function fetchSharedTripData(tripId, db = getDatabase()) {
@@ -271,7 +285,7 @@ export async function fetchSharedTripData(tripId, db = getDatabase()) {
   ]);
   if (ownerAccount.data()?.isDeleted || ownerSafety.data()?.restricted) return null;
 
-  const [activitiesDocs, flightsDocs, membersSnap, lodgingsSnap] = await Promise.all([
+  const [activitiesDocs, flightsDocs, membersSnap, lodgingsSnap, transportationSnap] = await Promise.all([
     fetchNestedOrLegacyDocs({
       db,
       tripId,
@@ -282,7 +296,7 @@ export async function fetchSharedTripData(tripId, db = getDatabase()) {
       db,
       tripId,
       nestedCollection: collections.flights,
-      legacyCollection: collections.flights,
+      legacyCollection: collections.flights, mergeLegacy: true,
     }),
     db
       .collection(collections.trips)
@@ -290,6 +304,7 @@ export async function fetchSharedTripData(tripId, db = getDatabase()) {
       .collection(collections.members)
       .limit(100).get(),
     db.collection(collections.trips).doc(tripId).collection("lodgings").limit(100).get(),
+    db.collection(collections.trips).doc(tripId).collection("transportation").limit(100).get(),
   ]);
 
   // Explicit departures override historical joinedUsers arrays.
@@ -318,16 +333,33 @@ export async function fetchSharedTripData(tripId, db = getDatabase()) {
     lodging.likesCount = likes.docs.filter((doc) => visibleUsers.has(doc.id)).length;
   }));
 
+  const hiddenFlights = flightsDocs.filter((doc) => doc.data().moderationRemoved || !visibleUsers.has(doc.data().userId))
+    .map((doc) => flightTransport(sanitizeFlight(doc.id, doc.data())));
+  const flights = flightsDocs.filter((doc) => !doc.data().moderationRemoved && visibleUsers.has(doc.data().userId) &&
+    !hiddenFlights.some((hidden) => sameTransportFlight(hidden, flightTransport(sanitizeFlight(doc.id, doc.data())))))
+    .map((doc) => sanitizeFlight(doc.id, doc.data())).filter(hasFlight);
+  const transportation = flights.map((flight) => flightTransport(flight));
+  const summary = sanitizeFlight('legacy-summary', {...trip, userId: ownerId});
+  if (hasFlight(summary)) {
+    const entry = flightTransport(summary, 'trip');
+    if (!transportation.some((flight) => sameTransportFlight(entry, flight)) && !hiddenFlights.some((flight) => sameTransportFlight(entry, flight))) transportation.push(entry);
+  }
+  transportation.push(...transportationSnap.docs.filter((doc) => !doc.data().moderationRemoved && visibleUsers.has(doc.data().userId))
+    .map((doc) => sanitizeTransportation(doc.id, doc.data())));
+  const publicTrip = sanitizeTrip(tripDoc.id, trip);
+  if (hiddenFlights.some((flight) => sameTransportFlight(flightTransport(summary), flight))) {
+    for (const field of ['airlineName', 'flightNumber', 'departureAirport', 'arrivalAirport', 'departureDate', 'arrivalDate']) publicTrip[field] = null;
+  }
   return {
-    trip: {...sanitizeTrip(tripDoc.id, trip), joinedUsers: getStringArray(trip.joinedUsers).filter((uid) => visibleUsers.has(uid))},
+    trip: {...publicTrip, joinedUsers: getStringArray(trip.joinedUsers).filter((uid) => visibleUsers.has(uid))},
     members: profiles.filter((item) => item?.profile.exists)
       .map(({uid, profile}) => sanitizeProfile(uid, profile.data())),
     activities: activitiesDocs.filter((doc) => !doc.data().moderationRemoved).map((doc) =>
       sanitizeActivity(doc.id, doc.data()),
     ),
     lodgings,
-    flights: flightsDocs.filter((doc) => !doc.data().moderationRemoved && visibleUsers.has(doc.data().userId))
-      .map((doc) => sanitizeFlight(doc.id, doc.data())).filter(hasFlight),
+    flights,
+    transportation: sortTransportation(transportation),
   };
 }
 

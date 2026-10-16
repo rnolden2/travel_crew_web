@@ -1,3 +1,5 @@
+import {transportModes, flightTransport, sortTransportation} from './transportation.js';
+import {formatTravelTime} from './travel-time.js';
 import {tripCalendar, activityCalendar} from './calendar.js';
 import {hasLodging, hasFlight} from './sections.js';
 import { applyStoreLinks } from '../config.js';
@@ -45,12 +47,14 @@ function toDate(value) {
 }
 
 function formatDate(value) {
+  if (typeof value === 'string') return formatTravelTime(value, {dateOnly: true});
   const date = toDate(value);
   if (!date || Number.isNaN(date.getTime())) return '';
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function formatDateTime(value) {
+  if (typeof value === 'string') return formatTravelTime(value);
   const date = toDate(value);
   if (!date || Number.isNaN(date.getTime())) return '';
   return date.toLocaleString('en-US', {month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short'});
@@ -133,12 +137,12 @@ export function renderError() {
   applyStoreLinks();
 }
 
-export function renderTrip({ trip, members = [], activities = [], flights = [], lodgings }) {
+export function renderTrip({ trip, members = [], activities = [], flights = [], lodgings, transportation }) {
   updateMetaTags(trip);
   renderHero(trip);
   renderHeader(trip, members);
   renderMembers(members);
-  renderFlights(flights);
+  renderTransportation(transportation ?? flights.filter(hasFlight).map((flight) => flightTransport(flight)));
   renderLodging(lodgings ?? (hasLodging(trip) ? [trip] : []));
   renderActivities(activities, trip.id);
   renderCTABanner();
@@ -247,38 +251,27 @@ function renderMembers(members) {
   show('members-section');
 }
 
-function renderFlights(flights) {
-  flights = flights.filter(hasFlight);
-  const section = byId('flights-section');
-  if (!section) return;
+function renderTransportation(entries) {
+  const section = byId('transportation-section');
   clear(section);
-  if (!flights.length) {
-    hide('flights-section');
-    return;
-  }
-
+  if (!entries.length) { hide('transportation-section'); return; }
   const list = el('div', 'flights-list');
-  flights.forEach((flight) => {
+  for (const entry of sortTransportation(entries)) {
     const card = el('div', 'flight-card');
-    const header = el('div', 'flight-header');
-    appendText(header, 'span', 'flight-traveler', flight.displayName || 'Traveler');
-    appendText(header, 'span', 'flight-airline', flight.airlineName);
-    appendText(header, 'span', 'flight-number', flight.flightNumber);
-
-    const route = el('div', 'flight-route');
-    route.append(el('span', 'airport', flight.departureAirport || '-'), el('span', 'flight-arrow', 'to'), el('span', 'airport', flight.arrivalAirport || '-'));
-
-    const dates = el('div', 'flight-dates');
-    appendText(dates, 'span', '', flight.departureDate ? `Dep: ${formatDate(flight.departureDate)}` : '');
-    appendText(dates, 'span', '', flight.arrivalDate ? `Arr: ${formatDate(flight.arrivalDate)}` : '');
-
-    card.append(header, route);
-    if (dates.children.length) card.appendChild(dates);
+    appendText(card, 'h3', '', entry.title || transportModes[entry.mode] || 'Other');
+    if (entry.title) appendText(card, 'span', '', transportModes[entry.mode] || 'Other');
+    if (entry.origin || entry.destination) appendText(card, 'p', 'flight-route', `${entry.origin || 'Origin not set'} → ${entry.destination || 'Destination not set'}`);
+    appendText(card, 'p', '', [entry.provider, entry.serviceNumber].filter(Boolean).join(' · '));
+    if (entry.departure) appendText(card, 'p', '', `Departure: ${formatDateTime(entry.departure)}`);
+    if (entry.arrival) appendText(card, 'p', '', `Arrival: ${formatDateTime(entry.arrival)}`);
+    if (!entry.departure && !entry.arrival) appendText(card, 'p', '', 'Time not set');
+    if (entry.driver) appendText(card, 'p', '', `Driver: ${entry.driver}`);
+    appendText(card, 'p', '', entry.travelerNames?.length ? `Travelers: ${entry.travelerNames.join(', ')}` : entry.displayName);
+    appendText(card, 'p', '', entry.notes);
     list.appendChild(card);
-  });
-
-  section.append(sectionHeading('Flights'), list);
-  show('flights-section');
+  }
+  section.append(sectionHeading('Transportation'), list);
+  show('transportation-section');
 }
 
 function renderLodging(lodgings) {
@@ -293,7 +286,7 @@ function renderLodging(lodgings) {
     appendText(card, 'p', 'lodging-type', option.lodgingType);
     appendText(card, 'p', 'lodging-name', option.hotelName);
     appendText(card, 'p', 'lodging-address', option.hotelAddress);
-    const dates = [option.checkInDate ? `Check-in: ${formatDate(option.checkInDate)}` : '', option.checkOutDate ? `Check-out: ${formatDate(option.checkOutDate)}` : ''].filter(Boolean);
+    const dates = [option.checkInDate ? `Check-in: ${formatDateTime(option.checkInDate)}` : '', option.checkOutDate ? `Check-out: ${formatDateTime(option.checkOutDate)}` : ''].filter(Boolean);
     appendText(card, 'p', 'lodging-dates', dates.join(' | '));
     if (option.expensePerNight != null) appendText(card, 'p', 'lodging-cost', `$${Number(option.expensePerNight).toFixed(2)} / night`);
     if (option.likesCount > 0) appendText(card, 'p', 'lodging-likes', `${option.likesCount} ${option.likesCount === 1 ? 'like' : 'likes'}`);

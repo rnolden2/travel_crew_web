@@ -55,7 +55,7 @@ try {
   assert.equal(await page.getByText('<script>unsafe</script>', {exact: true}).isVisible(), true);
   assert.match(await page.locator('.activity-time').textContent(), /\d:\d{2}/);
   assert.equal(await page.locator('#lodging-section').isVisible(), false);
-  assert.equal(await page.locator('#flights-section').isVisible(), false);
+  assert.equal(await page.locator('#transportation-section').isVisible(), false);
   assert.equal(await page.getByText('🔒 Private trip', {exact: true}).isVisible(), true);
   assert.match(await page.locator('.trip-owner').textContent(), /Created by <script>unsafe<\/script>/);
   assert.equal(await page.getByRole('link', {name: 'Add to Calendar'}).getAttribute('href'), `/api/shared-trip?tripId=${tripId}&format=ics`);
@@ -84,6 +84,28 @@ try {
   assert.equal(await page.getByText('2 likes', {exact: true}).isVisible(), true);
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   await page.screenshot({path: '/private/tmp/travelcrew-shared-lodging.png', fullPage: true});
+  await page.unroute('**/api/shared-trip?*');
+  await page.route('**/api/shared-trip?*', (route) => route.fulfill({json: {
+    trip: {id: tripId, destination: 'Tokyo', createdBy: 'owner', tripStartDate: '2027-04-10'}, members: [], activities: [],
+    transportation: [
+      {id:'flight:one', mode:'flight', title:'Flight to Tokyo', origin:'Los Angeles', destination:'Tokyo Narita', departure:'2027-04-10T10:00:00-07:00', arrival:'2027-04-11T14:00:00+09:00', provider:'Example Air', serviceNumber:'TC123', travelerNames:['Randy','Alex']},
+      {id:'transportation:ride', mode:'rideshare', title:'Airport transfer', provider:'Uber', origin:'Narita Airport', destination:'Hotel', notes:'Meet at arrivals'},
+      {id:'transportation:scooter', mode:'scooter', title:'Scooter rental', notes:'<script>unsafe</script>'},
+      {id:'transportation:train', mode:'train', title:'Train excursion', departure:'2027-04-12'},
+    ],
+  }}));
+  for (const width of [320, 390, 1440]) {
+    await page.setViewportSize({width, height:900});
+    await page.goto(`${base}/trip/${tripId}`);
+    await page.getByRole('heading', {name:'Transportation', exact:true}).waitFor();
+    assert.equal(await page.locator('.flight-card').count(), 4);
+    assert.equal(await page.getByText('Notes not set', {exact:true}).count(), 0);
+    assert.equal(await page.getByText('Scooter rental', {exact:true}).isVisible(), true);
+    assert.match(await page.locator('#transportation-section').textContent(), /10:00 AM.*UTC-07:00/);
+    assert.match(await page.locator('#transportation-section').textContent(), /2:00 PM.*UTC\+09:00/);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `Transportation overflow at ${width}`);
+    await page.locator('#transportation-section').screenshot({path:`/private/tmp/travelcrew-transportation-web-${width}.png`});
+  }
   await page.unroute('**/api/shared-trip?*');
   await page.route('**/api/shared-trip?*', (route) => route.fulfill({status: 404, json: {error: 'Trip not found'}}));
   await page.goto(`${base}/trip/${tripId}`);
