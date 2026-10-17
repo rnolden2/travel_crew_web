@@ -258,16 +258,12 @@ function renderTransportation(entries) {
   const list = el('div', 'flights-list');
   for (const entry of sortTransportation(entries)) {
     const card = el('div', 'flight-card');
-    appendText(card, 'h3', '', entry.title || transportModes[entry.mode] || 'Other');
-    if (entry.title) appendText(card, 'span', '', transportModes[entry.mode] || 'Other');
-    if (entry.origin || entry.destination) appendText(card, 'p', 'flight-route', `${entry.origin || 'Origin not set'} → ${entry.destination || 'Destination not set'}`);
-    appendText(card, 'p', '', [entry.provider, entry.serviceNumber].filter(Boolean).join(' · '));
+    appendText(card, 'h3', '', transportModes[entry.mode] || 'Other');
+    if (entry.displayName?.trim()) appendText(card, 'p', '', `Saved by ${entry.displayName.trim()}`);
     if (entry.departure) appendText(card, 'p', '', `Departure: ${formatDateTime(entry.departure)}`);
     if (entry.arrival) appendText(card, 'p', '', `Arrival: ${formatDateTime(entry.arrival)}`);
     if (!entry.departure && !entry.arrival) appendText(card, 'p', '', 'Time not set');
-    if (entry.driver) appendText(card, 'p', '', `Driver: ${entry.driver}`);
-    appendText(card, 'p', '', entry.travelerNames?.length ? `Travelers: ${entry.travelerNames.join(', ')}` : entry.displayName);
-    appendText(card, 'p', '', entry.notes);
+    appendText(card, 'p', 'transportation-notes', entry.notes);
     list.appendChild(card);
   }
   section.append(sectionHeading('Transportation'), list);

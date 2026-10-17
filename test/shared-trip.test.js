@@ -163,3 +163,19 @@ test('moderated mirrored flights cannot reappear through legacy trip fields', as
   assert.equal(result.transportation.some((entry) => entry.serviceNumber === 'AB123'), false);
   assert.equal(result.trip.flightNumber, null);
 });
+
+test('MCP flights stored as transportation retain local clocks, notes and saver name', async () => {
+  const {db, records} = fixture();
+  records.set(`trips/${tripId}/transportation/transport_0`, {
+    id: 'transport_0', tripId, userId: 'owner', displayName: 'Randy', mode: 'flight',
+    departure: '2027-03-14T02:30:00', arrival: '2027-03-14T01:30:00',
+    notes: 'Example Air TC123, Tokyo to Los Angeles',
+  });
+  const result = await fetchSharedTripData(tripId, db);
+  const saved = result.transportation.find((entry) => entry.notes === 'Example Air TC123, Tokyo to Los Angeles');
+  assert.ok(saved);
+  assert.equal(saved.mode, 'flight');
+  assert.equal(saved.departure, '2027-03-14T02:30:00');
+  assert.equal(saved.arrival, '2027-03-14T01:30:00');
+  assert.equal(saved.displayName, 'Randy');
+});

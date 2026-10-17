@@ -473,3 +473,8 @@ a {
 .lodging-card + .lodging-card { margin-top: 12px; }
 
 .activity-calendar { margin-top: 14px; font-size: 14px; }
+
+.transportation-notes {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
