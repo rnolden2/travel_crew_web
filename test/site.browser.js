@@ -43,9 +43,16 @@ try {
   await page.getByRole('button', {name: 'Copy connection URL'}).click();
   assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'https://travelcrew.app/mcp');
   process.env.VITE_ASSISTANT_BASE_URL = '';
+  let sectionData = {};
+  await page.route('**/api/shared-trip-section?*', (route) => {
+    const url = new URL(route.request().url());
+    const section = url.searchParams.get('section');
+    route.fulfill({json: {items: sectionData[section] || [], nextCursor: null, nextSource: null}});
+  });
+  sectionData = {activities: [{id: 'museum', title: 'Museum', startDateTime: '2020-04-10T10:00:00+09:00', endDateTime: '2020-04-10T11:00:00+09:00'}, {id: 'unscheduled', title: 'Unscheduled'}]};
   await page.route('**/api/shared-trip?*', (route) => route.fulfill({json: {
-    trip: {id: tripId, title: 'Example itinerary', destination: 'Tokyo', country: 'Japan', tripStatus: 'upcoming', tripStartDate: '2020-04-10', tripEndDate: '2020-04-12', images: [], createdBy: 'owner', isPrivate: true},
-    members: [{uid: 'owner', displayName: '<script>unsafe</script>'}], flights: [],
+    trip: {id: tripId, title: 'Example itinerary', destination: 'Tokyo', country: 'Japan', tripStatus: 'upcoming', tripStartDate: '2020-04-10', tripEndDate: '2020-04-12', images: [], creatorDisplayName: '<script>unsafe</script>', isPrivate: true},
+    members: [{displayName: '<script>unsafe</script>'}], transportation: [],
     activities: [{id: 'museum', title: 'Museum', startDateTime: '2020-04-10T10:00:00+09:00', endDateTime: '2020-04-10T11:00:00+09:00'}, {id: 'unscheduled', title: 'Unscheduled'}],
   }}));
   await page.goto(`${base}/trip/${tripId}`);
@@ -65,10 +72,15 @@ try {
   await page.screenshot({path: '/private/tmp/travelcrew-shared-trip.png', fullPage: true});
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   await page.unroute('**/api/shared-trip?*');
+  sectionData = {transportation: [{id: 'flight', mode: 'flight', displayName: 'Alex', notes: 'TC123'}, {id: 'blank', mode: 'flight', displayName: 'Blank'}], lodgings: [
+    {id: 'legacy', hotelName: 'First hotel', checkInDate: '2027-04-10', expensePerNight: 99},
+    {id: 'second', hotelName: 'Second hotel', hotelAddress: 'Main Street', likesCount: 2},
+    {id: 'blank', hotelName: ' '},
+  ]};
   await page.route('**/api/shared-trip?*', (route) => route.fulfill({json: {
-    trip: {id: tripId, destination: 'Tokyo', createdBy: 'owner', isPrivate: false, tripStartDate: '2027-04-10'},
-    members: [{uid: 'owner', displayName: 'Alex'}], activities: [],
-    flights: [{displayName: 'Alex', flightNumber: 'TC123'}, {displayName: 'Blank', flightNumber: ' '}],
+    trip: {id: tripId, destination: 'Tokyo', creatorDisplayName: 'Alex', isPrivate: false, tripStartDate: '2027-04-10'},
+    members: [{displayName: 'Alex'}], activities: [],
+    transportation: [{id: 'flight', mode: 'flight', displayName: 'Alex', notes: 'TC123'}, {id: 'blank', mode: 'flight', displayName: 'Blank'}],
     lodgings: [
       {id: 'legacy', hotelName: 'First hotel', checkInDate: '2027-04-10', expensePerNight: 99},
       {id: 'second', hotelName: 'Second hotel', hotelAddress: 'Main Street', likesCount: 2},
@@ -78,15 +90,21 @@ try {
   await page.goto(`${base}/trip/${tripId}`);
   await page.getByText('Second hotel', {exact: true}).waitFor();
   assert.equal(await page.locator('.lodging-card').count(), 2);
-  assert.equal(await page.locator('.flight-card').count(), 1);
+  assert.equal(await page.locator('.flight-card').count(), 2);
   assert.equal(await page.locator('#activities-section').isVisible(), false);
   assert.equal(await page.getByText('🌐 Public trip', {exact: true}).isVisible(), true);
   assert.equal(await page.getByText('2 likes', {exact: true}).isVisible(), true);
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   await page.screenshot({path: '/private/tmp/travelcrew-shared-lodging.png', fullPage: true});
   await page.unroute('**/api/shared-trip?*');
+  sectionData = {transportation: [
+    {id:'flight:one', mode:'flight', title:'Flight to Tokyo', origin:'Los Angeles', destination:'Tokyo Narita', departure:'2027-04-10T10:00:00-07:00', arrival:'2027-04-11T14:00:00+09:00', provider:'Example Air', serviceNumber:'TC123', travelerNames:['Randy','Alex']},
+    {id:'transportation:ride', mode:'rideshare', displayName:'Randy', title:'Airport transfer', provider:'Uber', origin:'Narita Airport', destination:'Hotel', notes:'Meet at arrivals'},
+    {id:'transportation:scooter', mode:'scooter', title:'Scooter rental', notes:'<script>unsafe</script>'},
+    {id:'transportation:train', mode:'train', title:'Train excursion', departure:'2027-04-12'},
+  ]};
   await page.route('**/api/shared-trip?*', (route) => route.fulfill({json: {
-    trip: {id: tripId, destination: 'Tokyo', createdBy: 'owner', tripStartDate: '2027-04-10'}, members: [], activities: [],
+    trip: {id: tripId, destination: 'Tokyo', tripStartDate: '2027-04-10'}, members: [], activities: [],
     transportation: [
       {id:'flight:one', mode:'flight', title:'Flight to Tokyo', origin:'Los Angeles', destination:'Tokyo Narita', departure:'2027-04-10T10:00:00-07:00', arrival:'2027-04-11T14:00:00+09:00', provider:'Example Air', serviceNumber:'TC123', travelerNames:['Randy','Alex']},
       {id:'transportation:ride', mode:'rideshare', displayName:'Randy', title:'Airport transfer', provider:'Uber', origin:'Narita Airport', destination:'Hotel', notes:'Meet at arrivals'},
@@ -110,6 +128,31 @@ try {
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `Transportation overflow at ${width}`);
     await page.locator('#transportation-section').screenshot({path:`/private/tmp/travelcrew-transportation-web-${width}.png`});
   }
+  await page.unroute('**/api/shared-trip-section?*');
+  await page.route('**/api/shared-trip-section?*', (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get('section') !== 'activities') {
+      route.fulfill({json: {items: [], nextCursor: null, nextSource: null}}); return;
+    }
+    if (url.searchParams.has('cursor')) {
+      route.fulfill({status: 404, json: {error: 'Trip not found'}}); return;
+    }
+    route.fulfill({json: {items: [{id: 'first', title: 'First activity'}],
+      nextCursor: 'first', nextSource: 'nested'}});
+  });
+  await page.goto(`${base}/trip/${tripId}`);
+  await page.getByRole('button', {name: 'Load more activities'}).waitFor();
+  assert.equal(await page.locator('.activity-card').count(), 1);
+  await page.getByRole('button', {name: 'Load more activities'}).click();
+  await page.getByRole('heading', {name: 'Trip not found'}).waitFor();
+  assert.equal(await page.locator('#trip-content').isVisible(), false);
+  await page.unroute('**/api/shared-trip-section?*');
+  await page.unroute('**/api/shared-trip?*');
+  await page.route('**/api/shared-trip?*', (route) => route.fulfill({status: 503,
+    json: {error: 'temporarily unavailable'}}));
+  await page.goto(`${base}/trip/${tripId}`);
+  await page.getByRole('heading', {name: 'Unable to load trip'}).waitFor();
+  assert.equal(await page.getByRole('button', {name: 'Retry'}).isVisible(), true);
   await page.unroute('**/api/shared-trip?*');
   await page.route('**/api/shared-trip?*', (route) => route.fulfill({status: 404, json: {error: 'Trip not found'}}));
   await page.goto(`${base}/trip/${tripId}`);

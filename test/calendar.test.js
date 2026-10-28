@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {tripCalendar, activityCalendar} from '../src/trip-share/calendar.js';
-import {hasLodging, hasFlight} from '../src/trip-share/sections.js';
+import {hasLodging} from '../src/trip-share/sections.js';
 
 test('all-day calendars preserve written dates and include the last day', () => {
   for (const [start, end, exclusive] of [
@@ -22,11 +22,9 @@ test('calendar text escapes injections and folds Unicode within 75 octets', () =
   assert.ok(calendar.includes('Tokyo\\, Japan\\; \\\\ test\\nEND:VEVENT\\n'));
   for (const line of calendar.split('\r\n')) assert.ok(Buffer.byteLength(line) <= 75);
 });
-test('blank category fields do not count as lodging or flights', () => {
+test('blank category fields do not count as lodging', () => {
   assert.equal(hasLodging({hotelName: '  ', checkInDate: 'invalid', expensePerNight: 0}), false);
   assert.equal(hasLodging({hotelName: 'Hotel'}), true);
-  assert.equal(hasFlight({displayName: 'Traveler', airlineName: ' '}), false);
-  assert.equal(hasFlight({flightNumber: 'AB123'}), true);
 });
 
 

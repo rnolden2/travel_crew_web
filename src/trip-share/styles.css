@@ -478,3 +478,17 @@ a {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.section-load-more {
+  display: block;
+  margin: 0 auto 1.5rem;
+  padding: 0.65rem 1rem;
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.section-load-more[hidden] { display: none; }
+.section-load-more:disabled { cursor: wait; opacity: 0.7; }

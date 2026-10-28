@@ -1,7 +1,7 @@
-import {transportModes, flightTransport, sortTransportation} from './transportation.js';
+import {transportModes, sortTransportation} from './transportation.js';
 import {formatTravelTime} from './travel-time.js';
 import {tripCalendar, activityCalendar} from './calendar.js';
-import {hasLodging, hasFlight} from './sections.js';
+import {hasLodging} from './sections.js';
 import { applyStoreLinks } from '../config.js';
 
 function byId(id) {
@@ -129,20 +129,40 @@ export function hideLoading() {
   hide('loading-state');
 }
 
-export function renderError() {
+export function renderError(reason) {
   hide('loading-state');
   hide('trip-content');
   hide('cta-banner');
+  if (reason === 'tooLarge') {
+    const panel = byId('error-state');
+    const heading = panel?.querySelector('h1');
+    const description = panel?.querySelector('p');
+    if (heading) heading.textContent = 'Trip preview unavailable';
+    if (description) description.textContent =
+      'This trip has too many details for the browser preview. Open it in Travel Crew.';
+  } else if (reason === 'loadFailed') {
+    const panel = byId('error-state');
+    const heading = panel?.querySelector('h1');
+    const description = panel?.querySelector('p');
+    if (heading) heading.textContent = 'Unable to load trip';
+    if (description) description.textContent = 'Check your connection and try again.';
+    if (panel && !panel.querySelector('.retry-trip-button')) {
+      const button = el('button', 'retry-trip-button section-load-more', 'Retry');
+      button.type = 'button';
+      button.addEventListener('click', () => window.location.reload());
+      panel.appendChild(button);
+    }
+  }
   show('error-state');
   applyStoreLinks();
 }
 
-export function renderTrip({ trip, members = [], activities = [], flights = [], lodgings, transportation }) {
+export function renderTrip({ trip, members = [], activities = [], lodgings, transportation = [] }) {
   updateMetaTags(trip);
   renderHero(trip);
   renderHeader(trip, members);
   renderMembers(members);
-  renderTransportation(transportation ?? flights.filter(hasFlight).map((flight) => flightTransport(flight)));
+  renderTransportation(transportation);
   renderLodging(lodgings ?? (hasLodging(trip) ? [trip] : []));
   renderActivities(activities, trip.id);
   renderCTABanner();
@@ -197,8 +217,7 @@ function renderHeader(trip, members) {
   appendText(section, 'p', 'trip-country', [trip.country, trip.continent].filter(Boolean).join(' | '));
   if (trip.title && trip.title !== trip.destination) appendText(section, 'p', 'trip-tagline', trip.title);
 
-  const owner = members.find((member) => member.uid === trip.createdBy);
-  appendText(section, 'p', 'trip-owner', `Created by ${owner?.displayName || owner?.firstName || 'Unavailable'}`);
+  appendText(section, 'p', 'trip-owner', `Created by ${trip.creatorDisplayName || 'Unavailable'}`);
   const privacy = el('span', 'trip-privacy', trip.isPrivate ? '🔒 Private trip' : '🌐 Public trip');
   section.appendChild(privacy);
   if (tripCalendar(trip)) {
@@ -237,13 +256,12 @@ function renderMembers(members) {
     const image = safeUrl(member.profileImage);
     if (image) {
       avatar.style.backgroundImage = `url("${image}")`;
-      avatar.setAttribute('aria-label', member.displayName || member.firstName || 'Traveler');
+      avatar.setAttribute('aria-label', member.displayName || 'Traveler');
     } else {
-      avatar.appendChild(el('span', '', (member.firstName?.[0] || member.displayName?.[0] || '?').toUpperCase()));
+      avatar.appendChild(el('span', '', (member.displayName?.[0] || '?').toUpperCase()));
     }
     card.appendChild(avatar);
-    appendText(card, 'p', 'member-name', member.displayName || member.firstName || 'Traveler');
-    appendText(card, 'p', 'member-hometown', member.hometown);
+    appendText(card, 'p', 'member-name', member.displayName || 'Traveler');
     grid.appendChild(card);
   });
 
@@ -284,7 +302,18 @@ function renderLodging(lodgings) {
     appendText(card, 'p', 'lodging-address', option.hotelAddress);
     const dates = [option.checkInDate ? `Check-in: ${formatDateTime(option.checkInDate)}` : '', option.checkOutDate ? `Check-out: ${formatDateTime(option.checkOutDate)}` : ''].filter(Boolean);
     appendText(card, 'p', 'lodging-dates', dates.join(' | '));
-    if (option.expensePerNight != null) appendText(card, 'p', 'lodging-cost', `$${Number(option.expensePerNight).toFixed(2)} / night`);
+    if (option.expensePerNight != null &&
+        (option.expensePerNight > 0 || option.currencyCode || option.lodgingCurrencyCode)) {
+      let cost = `Cost: ${Number(option.expensePerNight).toFixed(2)} / night (currency unspecified)`;
+      const currencyCode = option.currencyCode || option.lodgingCurrencyCode;
+      if (/^[A-Z]{3}$/.test(currencyCode || '')) {
+        try {
+          cost = `${new Intl.NumberFormat('en-US', {style: 'currency',
+            currency: currencyCode, currencyDisplay: 'code'}).format(option.expensePerNight)} / night`;
+        } catch { /* Historical unsupported code retains an explicit unknown label. */ }
+      }
+      appendText(card, 'p', 'lodging-cost', cost);
+    }
     if (option.likesCount > 0) appendText(card, 'p', 'lodging-likes', `${option.likesCount} ${option.likesCount === 1 ? 'like' : 'likes'}`);
     section.append(card);
   }

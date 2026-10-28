@@ -31,7 +31,10 @@ See `.env.example`. Only the following public settings are exposed by `/runtime-
 | `VITE_ASSISTANT_BASE_URL` | Account-management base URL, production `https://travelcrew.app/assistant`. Blank hides direct assistant controls. |
 | `VITE_ASSISTANT_MCP_URL` | Canonical connection URL, production `https://travelcrew.app/mcp`. |
 | `ASSISTANT_UPSTREAM_URL` | Server-only fixed HTTPS origin of the deployed assistant function. |
+| `FIREBASE_STORAGE_BUCKET` | Firebase Storage bucket holding trip photos; the Cloud Build substitution `_STORAGE_BUCKET` supplies it. |
 | `OPENAI_APPS_CHALLENGE` | Exact portal-issued domain-verification token, served as plain text at `/.well-known/openai-apps-challenge`. |
+| `WEB_API_RATE_LIMIT_PER_MINUTE` | Server-only per-client, per-instance request cap for `/api/*` routes (shared-trip JSON and photo proxies). Default 240; `0` disables. Excess requests get `429` with `Retry-After`. |
+| `WEB_TRUSTED_PROXY_HOPS` | Server-only count of trusted proxies appending to `X-Forwarded-For`; the client address is read that many entries from the end. Default 1 (Cloud Run front end). |
 
 `FIRESTORE_DATABASE_ID` defaults to `travel-crew-db-2`. `GOOGLE_MAPS_SERVER_KEY` stays on the server. `GOOGLE_PLACES_API_KEY` and `GOOGLE_MAPS_API_KEY` are accepted as legacy server aliases. The website no longer uses browser Firebase credentials or a waitlist database.
 
@@ -39,19 +42,47 @@ The manual AI import instructions work independently of the assistant service. E
 
 ## Shared-trip behavior
 
-`GET /api/shared-trip?tripId=<id>` supplies the `/trip/<id>` preview. The server reads an explicit allowlist of trip, activity, flight, lodging, and public crew fields. It never returns expense records, chat, or private account fields.
+`GET /api/shared-trip?tripId=<id>` supplies the `/trip/<id>` preview. The server reads an explicit allowlist of trip, activity, transportation, lodging, and public crew fields. It never returns expense records, chat, account IDs, hometowns, or private account fields.
 
 - Only trips with `isShared: true` are available. A private trip can still have an explicitly created share link, matching the app's sharing behavior.
 - Deleted or moderation-removed trips and trips owned by deleted or restricted accounts return 404. Departed, deleted, restricted, and moderation-removed crew profiles are excluded.
-- Nested activity and flight records are preferred, with compatibility reads for legacy collections. Reads are capped at 100 records per collection.
+- Canonical activities and distinct legacy activities are both shown; a canonical ID, including a tombstone, masks its legacy counterpart. Transportation uses the trip's canonical collection. The server reads activities, lodging, transportation and likes in document-ID pages. A collection above 2,000 records returns HTTP 413 with an explicit browser message; the crew roster is limited to 100 travelers.
 - App links use `travelcrew://trips/<UUID>`, matching the current Flutter link parser. Legacy non-UUID previews remain readable without an unsupported app link.
 - Lodging includes the original trip-level fields and additional `trips/{tripId}/lodgings` options. Like counts exclude travelers not visible in the shared crew list; voter IDs are not returned.
-- Empty lodging, flights, activities, and crew sections are hidden. Expenses remain excluded from the public API.
+- Empty lodging, transportation, activities, and crew sections are hidden. Expenses remain excluded from the public API.
 - The header identifies the trip creator and privacy setting. A private trip's explicit share link does not change its privacy setting.
 - `GET /api/shared-trip?tripId=<id>&format=ics` downloads one all-day calendar event spanning all travel dates, with the same sharing authorization as the preview. Invalid date ranges return 422. Append `&activityId=<id>` to download that activity as a separate timed event. Missing start times or invalid ranges return 422; a missing end time defaults to one hour. Explicit timezone offsets are preserved as UTC instants, while unzoned times remain floating calendar times. Calendar exports do not sync subsequent edits.
 - Opening the app is an explicit action; the page does not automatically redirect users to a store.
 
-`GET /api/place-photo` proxies validated Places photo resource names using the server key. The shared-trip/photo and static routes accept GET and HEAD requests only. Assistant routes forward their required POST and DELETE methods to the authenticated backend. Historical privacy, terms, and Travel Chain URLs remain supported; `/about-us` redirects to the homepage's About section.
+`GET /api/place-photo?tripId=<id>&name=<Places photo name>` serves a Places
+image only while that exact photo is still on a shared trip owned by an
+active account. It checks sharing again after fetching, limits the image to
+20 MiB and returns `Cache-Control: no-store`. Historical website photo URLs
+are projected onto this trip-scoped route. The server key stays private.
+`GET /api/legacy-place-photo?tripId=<id>&index=<image index>` serves older
+`maps.googleapis.com/maps/api/place/photo` images through the same sharing
+checks and byte limits. It replaces the stored URL's `key` with the server
+key, accepts only trusted Google image redirects and returns `no-store`.
+Malformed legacy Maps URLs are omitted from the shared response. Legacy
+photo references can expire, so an unavailable old photo must be replaced.
+`GET /api/trip-photo?tripId=<id>&index=<image index>` serves a Firebase
+Storage trip image only while it remains on an active shared trip. The shared
+trip response uses this route instead of exposing its download token. The
+server verifies the stored token against object metadata, checks sharing
+again after reading, allows raster content up to 20 MiB and sends `no-store`.
+`GET /api/profile-photo?tripId=<id>&index=<member index>` applies the same
+Storage checks to a visible member's profile image and rechecks membership,
+account eligibility and the exact profile reference after reading. Shared
+trip JSON contains the proxy URL instead of the Firebase download token.
+The Cloud Run runtime identity needs `storage.objects.get` on
+`universal-code-135522.appspot.com`; check this before rollout. Previously
+exposed download tokens remain usable until rotated, and Storage rules still
+permit public reads on historical paths. Inventory and rotate tokens as a
+separate reviewed production operation. The shared-trip/photo and static
+routes accept GET and HEAD requests only. Assistant routes forward POST and DELETE
+methods to the authenticated backend. Historical privacy, terms, and Travel
+Chain URLs remain supported; `/about-us` redirects to the homepage's About
+section.
 
 ## Verification
 
