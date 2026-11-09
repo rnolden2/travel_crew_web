@@ -1,7 +1,7 @@
 import {test, after} from 'node:test';
 import assert from 'node:assert/strict';
 import {Readable} from 'node:stream';
-import {fetchSharedTripData, createWebServer} from '../server.mjs';
+import {fetchSharedTripData, createWebServer, createPlacePhotoCache} from '../server.mjs';
 import {tripAppLink, validTripId} from '../src/trip-share/redirect.js';
 
 const tripId = '09e04f90-1acd-4f38-828f-32a359cc25e1';
@@ -606,4 +606,52 @@ test('MCP flights stored as transportation retain local clocks, notes and saver 
   assert.equal(saved.departure, '2027-03-14T02:30:00');
   assert.equal(saved.arrival, '2027-03-14T01:30:00');
   assert.equal(saved.displayName, 'Randy');
+});
+
+test('repeat views of a place photo are served without another billable upstream fetch', async () => {
+  const photoName = 'places/tokyo/photos/cover';
+  const {db, records} = fixture({images: [`https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=600&key=PRIVATE`]});
+  let upstreamCalls = 0;
+  const server = createWebServer({database: db, placePhotoApiKey: 'server-key',
+    fetchPlacePhoto: async () => {
+      upstreamCalls++;
+      return new Response(Buffer.from('image'), {headers: {'content-type': 'image/jpeg'}});
+    }});
+  servers.push(server);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const path = (await fetchSharedTripData(tripId, db)).trip.images[0];
+  for (let view = 0; view < 3; view++) {
+    const image = await fetch(base + path);
+    assert.equal(image.status, 200);
+    assert.equal(image.headers.get('cache-control'), 'no-store');
+    assert.equal(image.headers.get('content-type'), 'image/jpeg');
+    assert.equal(await image.text(), 'image');
+  }
+  assert.equal(upstreamCalls, 1);
+  // A different width is a different Google photo request.
+  assert.equal((await fetch(base + path.replace('maxWidthPx=600', 'maxWidthPx=300'))).status, 200);
+  assert.equal(upstreamCalls, 2);
+  // Authorization is still enforced on cached photos.
+  records.get(`trips/${tripId}`).isShared = false;
+  assert.equal((await fetch(base + path)).status, 404);
+  assert.equal(upstreamCalls, 2);
+});
+
+test('place photo cache expires entries, skips oversized photos and bounds total memory', () => {
+  let clock = 1_000;
+  const cache = createPlacePhotoCache({ttlMs: 100, maxEntryBytes: 10, maxTotalBytes: 25, now: () => clock});
+  cache.set('a', Buffer.alloc(10), 'image/jpeg');
+  cache.set('b', Buffer.alloc(10), 'image/jpeg');
+  assert.equal(cache.get('a')?.contentType, 'image/jpeg');
+  cache.set('too-big', Buffer.alloc(11), 'image/jpeg');
+  assert.equal(cache.get('too-big'), null);
+  // 'a' was touched most recently, so adding 'c' evicts 'b'.
+  cache.set('c', Buffer.alloc(10), 'image/jpeg');
+  assert.equal(cache.get('b'), null);
+  assert.notEqual(cache.get('a'), null);
+  assert.equal(cache.size, 2);
+  clock += 101;
+  assert.equal(cache.get('a'), null);
+  assert.equal(cache.size, 1);
 });

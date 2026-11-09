@@ -677,7 +677,49 @@ async function boundedPhotoBytes(body) {
   return Buffer.concat(chunks, size);
 }
 
-async function handlePlacePhotoApi(url, response, db, apiKey, fetchPhoto) {
+// Google bills every upstream Place Photo fetch. Responses to browsers stay
+// `no-store` so trip authorization is re-checked on every request, but the
+// bytes themselves are public Google Places photos, so one instance can serve
+// repeat views of the same photo without paying for it again.
+const placePhotoCacheTtlMs = 24 * 60 * 60 * 1000;
+const placePhotoCacheMaxEntryBytes = 4 * 1024 * 1024;
+const placePhotoCacheMaxTotalBytes = 48 * 1024 * 1024;
+
+export function createPlacePhotoCache({ttlMs = placePhotoCacheTtlMs,
+  maxEntryBytes = placePhotoCacheMaxEntryBytes,
+  maxTotalBytes = placePhotoCacheMaxTotalBytes, now = Date.now} = {}) {
+  const entries = new Map();
+  let totalBytes = 0;
+  function evict(key) {
+    const entry = entries.get(key);
+    if (!entry) return;
+    totalBytes -= entry.bytes.byteLength;
+    entries.delete(key);
+  }
+  return {
+    get(key) {
+      const entry = entries.get(key);
+      if (!entry) return null;
+      if (entry.expires <= now()) { evict(key); return null; }
+      // Map iteration is insertion-ordered; re-insert to mark as recently used.
+      entries.delete(key);
+      entries.set(key, entry);
+      return entry;
+    },
+    set(key, bytes, contentType) {
+      if (bytes.byteLength > maxEntryBytes) return;
+      evict(key);
+      while (totalBytes + bytes.byteLength > maxTotalBytes && entries.size > 0) {
+        evict(entries.keys().next().value);
+      }
+      entries.set(key, {bytes, contentType, expires: now() + ttlMs});
+      totalBytes += bytes.byteLength;
+    },
+    get size() { return entries.size; },
+  };
+}
+
+async function handlePlacePhotoApi(url, response, db, apiKey, fetchPhoto, cache) {
   const tripId = url.searchParams.get("tripId") || "";
   const photoName = url.searchParams.get("name") || "";
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(tripId) || !isPlacesPhotoName(photoName)) {
@@ -701,6 +743,13 @@ async function handlePlacePhotoApi(url, response, db, apiKey, fetchPhoto) {
   const maxWidthPx = Number.isFinite(maxWidth)
     ? Math.min(Math.max(Math.round(maxWidth), 1), 4800)
     : 1200;
+  const cacheKey = `${photoName}|${maxWidthPx}`;
+  const cached = cache?.get(cacheKey);
+  if (cached) {
+    response.writeHead(200, {"Cache-Control": "no-store", "Content-Type": cached.contentType});
+    response.end(cached.bytes);
+    return;
+  }
   const photoUrl = new URL(
     `https://places.googleapis.com/v1/${photoName}/media`,
   );
@@ -724,6 +773,8 @@ async function handlePlacePhotoApi(url, response, db, apiKey, fetchPhoto) {
     if (!await sharedPlacePhotoAllowed(tripId, photoName, photoDb)) {
       sendJson(response, 404, {error: "Photo unavailable"}); return;
     }
+    // Only photos that passed the post-fetch access check are cached.
+    cache?.set(cacheKey, bytes, contentType);
     response.writeHead(200, {
       "Cache-Control": "no-store",
       "Content-Type": contentType,
@@ -735,7 +786,7 @@ async function handlePlacePhotoApi(url, response, db, apiKey, fetchPhoto) {
   }
 }
 
-async function handleLegacyPlacePhotoApi(url, response, db, apiKey, fetchPhoto) {
+async function handleLegacyPlacePhotoApi(url, response, db, apiKey, fetchPhoto, cache) {
   const tripId = url.searchParams.get("tripId") || "";
   const rawIndex = url.searchParams.get("index") || "";
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(tripId) || !/^(0|[1-9][0-9]{0,3})$/.test(rawIndex)) {
@@ -748,6 +799,13 @@ async function handleLegacyPlacePhotoApi(url, response, db, apiKey, fetchPhoto) 
     const source = trip?.images?.[index];
     const photo = legacyPlacePhoto(source);
     if (!photo) { sendJson(response, 404, {error: "Photo unavailable"}); return; }
+    const cacheKey = `legacy|${photo.reference}|${photo.width}`;
+    const cached = cache?.get(cacheKey);
+    if (cached) {
+      response.writeHead(200, {"Cache-Control": "no-store", "Content-Type": cached.contentType});
+      response.end(cached.bytes);
+      return;
+    }
     if (!apiKey) { sendJson(response, 503, {error: "Photo service unavailable"}); return; }
     const upstream = new URL("https://maps.googleapis.com/maps/api/place/photo");
     upstream.searchParams.set("maxwidth", String(photo.width));
@@ -782,6 +840,7 @@ async function handleLegacyPlacePhotoApi(url, response, db, apiKey, fetchPhoto) 
     if (!current || current.images?.[index] !== source) {
       sendJson(response, 404, {error: "Photo unavailable"}); return;
     }
+    cache?.set(cacheKey, bytes, contentType);
     response.writeHead(200, {"Cache-Control": "no-store", "Content-Type": contentType});
     response.end(bytes);
   } catch (error) {
@@ -923,7 +982,8 @@ function sendFile(response, filePath, statusCode = 200) {
 export function createWebServer({database, assistantUpstream = process.env.ASSISTANT_UPSTREAM_URL,
   placePhotoApiKey = googlePlacesApiKey, fetchPlacePhoto = fetch,
   storageBucketName = process.env.FIREBASE_STORAGE_BUCKET, storageBucket,
-  apiRateLimit = rateLimitFromEnv(), now} = {}) {
+  apiRateLimit = rateLimitFromEnv(), now,
+  placePhotoCache = createPlacePhotoCache()} = {}) {
  const assistantProxy = createAssistantProxy(assistantUpstream);
  // 0 disables the per-instance brake; the assistant proxy has its own limits.
  const limiter = apiRateLimit?.limit > 0 ?
@@ -961,12 +1021,12 @@ export function createWebServer({database, assistantUpstream = process.env.ASSIS
   }
 
   if (url.pathname === "/api/place-photo") {
-    handlePlacePhotoApi(url, response, database, placePhotoApiKey, fetchPlacePhoto);
+    handlePlacePhotoApi(url, response, database, placePhotoApiKey, fetchPlacePhoto, placePhotoCache);
     return;
   }
 
   if (url.pathname === "/api/legacy-place-photo") {
-    handleLegacyPlacePhotoApi(url, response, database, placePhotoApiKey, fetchPlacePhoto);
+    handleLegacyPlacePhotoApi(url, response, database, placePhotoApiKey, fetchPlacePhoto, placePhotoCache);
     return;
   }
 
