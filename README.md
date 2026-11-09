@@ -40,6 +40,10 @@ See `.env.example`. Only the following public settings are exposed by `/runtime-
 
 The manual AI import instructions work independently of the assistant service. Enable direct assistant controls only after deploying and verifying the separately implemented assistant backend. The site offers the canonical `/mcp` connection URL and `/assistant/connect` account-management page. `assistant-proxy.mjs` forwards only MCP, assistant, and OAuth discovery routes to the configured backend, preserving authorization and consent cookies. Setting these URLs does not deploy the backend. See [client setup and submission](../integrations/README.md).
 
+## Account deletion page
+
+`/delete-account` (aliases `/delete-account.html`, `/account-deletion`) is the public account-deletion page declared in the Google Play Data safety form. It must keep naming Travel Crew and Kai Technologies Corp., show the in-app path (Profile > Delete Account) and the email request path, and stay linked from every page footer and from the Privacy Policy.
+
 ## Shared-trip behavior
 
 `GET /api/shared-trip?tripId=<id>` supplies the `/trip/<id>` preview. The server reads an explicit allowlist of trip, activity, transportation, lodging, and public crew fields. It never returns expense records, chat, account IDs, hometowns, or private account fields.

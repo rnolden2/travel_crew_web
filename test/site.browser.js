@@ -21,7 +21,7 @@ try {
   assert.equal(await page.locator('[data-play-store]').isVisible(), false);
   assert.equal(await page.locator('a[href*="travelchain"]').count(), 0);
   await page.screenshot({path: '/private/tmp/travelcrew-web-desktop.png', fullPage: true});
-  for (const path of ['/', '/privacypolicy', '/terms&conditions', '/travelchain', '/about-us', '/not-a-page']) {
+  for (const path of ['/', '/privacypolicy', '/terms&conditions', '/delete-account', '/travelchain', '/about-us', '/not-a-page']) {
     await page.setViewportSize({width: 390, height: 844});
     const response = await page.goto(base + path);
     assert.equal(response.status(), path === '/not-a-page' ? 404 : 200, path);
@@ -31,6 +31,12 @@ try {
     assert.equal(await page.getByRole('button', {name: 'Menu', exact: true}).getAttribute('aria-expanded'), 'false');
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `Mobile overflow: ${path}`);
     assert.equal(await page.getByRole('link', {name: 'Support@kaitechcorp.com', exact: true}).last().getAttribute('href'), 'mailto:Support@kaitechcorp.com');
+    if (path === '/delete-account') {
+      await page.getByRole('heading', {name: 'Delete your Travel Crew account'}).waitFor();
+      assert.match(await page.getByRole('link', {name: 'Email a deletion request'}).getAttribute('href'), /^mailto:Support@kaitechcorp\.com\?subject=/);
+      assert.ok(await page.getByText('Kai Technologies Corp.').first().isVisible());
+    }
+    if (path !== '/not-a-page') assert.equal(await page.getByRole('link', {name: 'Delete Account', exact: true}).getAttribute('href'), '/delete-account');
   }
   await page.goto(base);
   await page.screenshot({path: '/private/tmp/travelcrew-web-mobile.png', fullPage: true});

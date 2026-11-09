@@ -9,6 +9,9 @@ const pageRoutes = new Map([
   ["/privacypolicy.html", "/pages/privacypolicy.html"],
   ["/terms&conditions", "/pages/terms&conditions.html"],
   ["/terms&conditions.html", "/pages/terms&conditions.html"],
+  ["/delete-account", "/pages/delete-account.html"],
+  ["/delete-account.html", "/pages/delete-account.html"],
+  ["/account-deletion", "/pages/delete-account.html"],
 ]);
 
 function rewritePageRequest(req) {
@@ -60,6 +63,7 @@ export default defineConfig(({mode}) => {
         travelchain: resolve(__dirname, "pages/travelchain.html"),
         privacypolicy: resolve(__dirname, "pages/privacypolicy.html"),
         "terms&conditions": resolve(__dirname, "pages/terms&conditions.html"),
+        "delete-account": resolve(__dirname, "pages/delete-account.html"),
         404: resolve(__dirname, "pages/404.html"),
       },
     },

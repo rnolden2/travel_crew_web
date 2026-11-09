@@ -39,6 +39,9 @@ const pageRoutes = new Map([
   ["/privacypolicy.html", "/pages/privacypolicy.html"],
   ["/terms&conditions", "/pages/terms&conditions.html"],
   ["/terms&conditions.html", "/pages/terms&conditions.html"],
+  ["/delete-account", "/pages/delete-account.html"],
+  ["/delete-account.html", "/pages/delete-account.html"],
+  ["/account-deletion", "/pages/delete-account.html"],
 ]);
 
 const contentTypes = new Map([
@@ -579,6 +582,7 @@ async function handleSharedTripSectionApi(url, response, db) {
     sendJson(response, 400, {error: 'Invalid section request'}); return;
   }
   try {
+    db ??= getDatabase();
     const page = await fetchSharedTripSection(tripId, section, source, cursor, db);
     sendJson(response, page ? 200 : 404, page || {error: 'Trip not found'});
   } catch (error) {
@@ -602,6 +606,7 @@ async function handleSharedTripApi(url, response, db) {
   try {
     const summary = url.searchParams.get('summary') === '1';
     const isCalendar = url.searchParams.get('format') === 'ics';
+    db ??= getDatabase();
     const base = summary || isCalendar ? await loadSharedBase(tripId, db) : null;
     const data = base ? {...base.response, activities: [], lodgings: [], transportation: []} :
       summary || isCalendar ? null : await fetchSharedTripData(tripId, db);
